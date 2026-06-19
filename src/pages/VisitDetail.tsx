@@ -1,31 +1,52 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, Calendar, Hash, Save, Printer, CheckCircle2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  User,
+  Calendar,
+  Hash,
+  Save,
+  Printer,
+  CheckCircle2,
+  AlertTriangle,
+} from 'lucide-react';
 import PhotoGrid from '@/components/PhotoGrid';
 import CompareView from '@/components/CompareView';
 import VisitTimeline from '@/components/VisitTimeline';
 import OrderNote from '@/components/OrderNote';
+import QuickCompareBar from '@/components/QuickCompareBar';
+import VisitSummary from '@/components/VisitSummary';
 import { useVisitStore } from '@/store/useVisitStore';
-import type { PhotoAngle } from '@/types';
+import type { PhotoAngle, PhotoQualityStatus, QuickCompareTarget } from '@/types';
 import { ANGLE_LABELS } from '@/types';
 
 export default function VisitDetail() {
   const { id: patientId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [showQualityWarning, setShowQualityWarning] = useState(false);
+  const [quickCompareTarget, setQuickCompareTarget] = useState<QuickCompareTarget>('initial');
 
   const {
     getPatientById,
     getVisitsByPatientId,
     getCurrentVisit,
     getCompareVisit,
+    getInitialVisit,
+    getPreviousVisit,
+    getVisitById,
+    getQualityIssues,
     currentVisitId,
     compareVisitId,
     selectedAngle,
+    showSummary,
+    summaryVisitId,
     setCurrentVisit,
     setCompareVisit,
     setSelectedAngle,
+    setShowSummary,
     updatePhoto,
     removePhoto,
+    updatePhotoQuality,
     updateNotes,
     completeVisit,
     getOrCreateTodayVisit,
@@ -35,6 +56,13 @@ export default function VisitDetail() {
   const patientVisits = patientId ? getVisitsByPatientId(patientId) : [];
   const currentVisit = getCurrentVisit();
   const compareVisit = getCompareVisit();
+  const initialVisit = patientId ? getInitialVisit(patientId) : undefined;
+  const previousVisit =
+    patientId && currentVisitId ? getPreviousVisit(patientId, currentVisitId) : undefined;
+  const summaryVisit = summaryVisitId ? getVisitById(summaryVisitId) : undefined;
+
+  const hasInitial = !!initialVisit && Object.keys(initialVisit.photos).length > 0;
+  const hasPrevious = !!previousVisit && Object.keys(previousVisit.photos).length > 0;
 
   useEffect(() => {
     if (patientId) {
@@ -42,13 +70,34 @@ export default function VisitDetail() {
       setCurrentVisit(visit.id);
 
       if (!compareVisitId) {
-        const initialVisit = patientVisits.find((v) => v.visitNumber === 0);
-        if (initialVisit) {
-          setCompareVisit(initialVisit.id);
+        const initial = patientVisits.find((v) => v.visitNumber === 0);
+        if (initial) {
+          setCompareVisit(initial.id);
         }
       }
     }
   }, [patientId]);
+
+  const handleQuickCompareChange = useCallback(
+    (target: QuickCompareTarget) => {
+      setQuickCompareTarget(target);
+      if (!patientId || !currentVisitId) return;
+
+      if (target === 'initial' && initialVisit) {
+        setCompareVisit(initialVisit.id);
+      } else if (target === 'previous' && previousVisit) {
+        setCompareVisit(previousVisit.id);
+      } else if (target === 'current') {
+        const otherCompleted = patientVisits.find(
+          (v) => v.status === 'completed' && v.id !== currentVisitId
+        );
+        if (otherCompleted) {
+          setCompareVisit(otherCompleted.id);
+        }
+      }
+    },
+    [patientId, currentVisitId, initialVisit, previousVisit, patientVisits, setCompareVisit]
+  );
 
   const handleUpload = useCallback(
     (angle: PhotoAngle, file: File) => {
@@ -72,6 +121,14 @@ export default function VisitDetail() {
     [currentVisitId, removePhoto]
   );
 
+  const handleQualityChange = useCallback(
+    (angle: PhotoAngle, status: PhotoQualityStatus) => {
+      if (!currentVisitId) return;
+      updatePhotoQuality(currentVisitId, angle, status);
+    },
+    [currentVisitId, updatePhotoQuality]
+  );
+
   const handleNotesChange = useCallback(
     (notes: string) => {
       if (!currentVisitId) return;
@@ -80,14 +137,47 @@ export default function VisitDetail() {
     [currentVisitId, updateNotes]
   );
 
+  const qualityIssues = useMemo(() => {
+    if (!currentVisitId) return { missing: [] as PhotoAngle[], retake: [] as PhotoAngle[] };
+    return getQualityIssues(currentVisitId);
+  }, [currentVisitId, getQualityIssues]);
+
   const handleSaveVisit = useCallback(() => {
     if (!currentVisitId) return;
-    completeVisit(currentVisitId);
-    alert('复诊记录已保存！');
-  }, [currentVisitId, completeVisit]);
 
-  const currentAnglePhoto = currentVisit?.photos?.[selectedAngle as PhotoAngle];
-  const compareAnglePhoto = compareVisit?.photos?.[selectedAngle as PhotoAngle];
+    const { missing, retake } = qualityIssues;
+    if (missing.length > 0 || retake.length > 0) {
+      setShowQualityWarning(true);
+      return;
+    }
+
+    completeVisit(currentVisitId);
+    setShowQualityWarning(false);
+    setShowSummary(true, currentVisitId);
+  }, [currentVisitId, qualityIssues, completeVisit, setShowSummary]);
+
+  const handleForceSave = useCallback(() => {
+    if (!currentVisitId) return;
+    completeVisit(currentVisitId);
+    setShowQualityWarning(false);
+    setShowSummary(true, currentVisitId);
+  }, [currentVisitId, completeVisit, setShowSummary]);
+
+  const handleCloseSummary = useCallback(() => {
+    setShowSummary(false);
+  }, [setShowSummary]);
+
+  const handleViewSummary = useCallback(
+    (visitId: string) => {
+      setShowSummary(true, visitId);
+    },
+    [setShowSummary]
+  );
+
+  const currentAnglePhotoItem = currentVisit?.photos?.[selectedAngle as PhotoAngle];
+  const compareAnglePhotoItem = compareVisit?.photos?.[selectedAngle as PhotoAngle];
+  const currentAnglePhoto = currentAnglePhotoItem?.url;
+  const compareAnglePhoto = compareAnglePhotoItem?.url;
 
   const currentLabel = currentVisit
     ? currentVisit.visitNumber === 0
@@ -100,6 +190,8 @@ export default function VisitDetail() {
       ? '初诊'
       : `第${compareVisit.visitNumber}次复诊`
     : '';
+
+  const isCompleted = currentVisit?.status === 'completed';
 
   if (!patient) {
     return (
@@ -155,6 +247,12 @@ export default function VisitDetail() {
                   {currentVisit?.date || new Date().toISOString().split('T')[0]}
                 </span>
               </div>
+              {isCompleted && (
+                <span className="flex items-center gap-1 px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-sm font-medium">
+                  <CheckCircle2 size={14} />
+                  已完成
+                </span>
+              )}
 
               <button
                 onClick={() => window.print()}
@@ -164,13 +262,24 @@ export default function VisitDetail() {
                 打印
               </button>
 
-              <button
-                onClick={handleSaveVisit}
-                className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-medium"
-              >
-                <Save size={16} />
-                保存复诊
-              </button>
+              {!isCompleted && (
+                <button
+                  onClick={handleSaveVisit}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-medium"
+                >
+                  <Save size={16} />
+                  保存复诊
+                </button>
+              )}
+              {isCompleted && (
+                <button
+                  onClick={() => setShowSummary(true, currentVisitId || '')}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-medium"
+                >
+                  <CheckCircle2 size={16} />
+                  查看摘要
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -185,7 +294,9 @@ export default function VisitDetail() {
               onUpload={handleUpload}
               onRemove={handleRemove}
               onSelectAngle={setSelectedAngle}
-              showMissingWarning={true}
+              onQualityChange={handleQualityChange}
+              showMissingWarning={!isCompleted}
+              showQualityControls={!isCompleted}
             />
 
             <VisitTimeline
@@ -193,10 +304,20 @@ export default function VisitDetail() {
               currentVisitId={currentVisitId || ''}
               compareVisitId={compareVisitId}
               onSelectCompare={setCompareVisit}
+              onViewSummary={handleViewSummary}
             />
           </div>
 
           <div className="col-span-8 space-y-6">
+            <QuickCompareBar
+              patientId={patientId || ''}
+              currentVisitId={currentVisitId || ''}
+              currentTarget={quickCompareTarget}
+              hasInitial={hasInitial}
+              hasPrevious={hasPrevious}
+              onChangeTarget={handleQuickCompareChange}
+            />
+
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-slate-800">
@@ -254,11 +375,88 @@ export default function VisitDetail() {
             <OrderNote
               notes={currentVisit?.notes || ''}
               onNotesChange={handleNotesChange}
-              onSave={handleSaveVisit}
+              onSave={!isCompleted ? handleSaveVisit : undefined}
             />
           </div>
         </div>
       </main>
+
+      {showQualityWarning && (qualityIssues.missing.length > 0 || qualityIssues.retake.length > 0) && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-5 bg-gradient-to-r from-amber-500 to-amber-600">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                  <AlertTriangle size={20} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">照片质控提醒</h3>
+                  <p className="text-sm text-amber-100">保存前请确认以下问题</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              {qualityIssues.missing.length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold text-rose-600 mb-2">缺失角度：</p>
+                  <div className="flex flex-wrap gap-2">
+                    {qualityIssues.missing.map((angle) => (
+                      <span
+                        key={angle}
+                        className="px-3 py-1 bg-rose-50 text-rose-700 rounded-lg text-sm border border-rose-200"
+                      >
+                        {ANGLE_LABELS[angle]}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {qualityIssues.retake.length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold text-amber-600 mb-2">需重拍：</p>
+                  <div className="flex flex-wrap gap-2">
+                    {qualityIssues.retake.map((angle) => (
+                      <span
+                        key={angle}
+                        className="px-3 py-1 bg-amber-50 text-amber-700 rounded-lg text-sm border border-amber-200"
+                      >
+                        {ANGLE_LABELS[angle]}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="text-sm text-slate-500">
+                建议补拍后再保存，确保记录完整。您也可以选择强制保存。
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50">
+              <button
+                onClick={() => setShowQualityWarning(false)}
+                className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 bg-white rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                返回修改
+              </button>
+              <button
+                onClick={handleForceSave}
+                className="px-5 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition-colors"
+              >
+                强制保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSummary && summaryVisit && patient && (
+        <VisitSummary
+          visit={summaryVisit}
+          patient={patient}
+          compareVisit={summaryVisit.compareVisitId ? getVisitById(summaryVisit.compareVisitId) : compareVisit}
+          onClose={handleCloseSummary}
+          onBackToEdit={!isCompleted ? () => setShowSummary(false) : undefined}
+        />
+      )}
     </div>
   );
 }

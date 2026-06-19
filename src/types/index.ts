@@ -24,7 +24,15 @@ export const ANGLE_ORDER: PhotoAngle[] = [
   'right_buccal',
 ];
 
-export type PhotoAngleMap = Partial<Record<PhotoAngle, string>>;
+export type PhotoQualityStatus = 'pending' | 'approved' | 'retake';
+
+export interface PhotoItem {
+  url: string;
+  qualityStatus: PhotoQualityStatus;
+  uploadedAt: string;
+}
+
+export type PhotoAngleMap = Partial<Record<PhotoAngle, PhotoItem>>;
 
 export interface Patient {
   id: string;
@@ -47,6 +55,8 @@ export interface Visit {
   status: 'draft' | 'completed';
   notes: string;
   photos: PhotoAngleMap;
+  compareVisitId?: string;
+  completedAt?: string;
 }
 
 export interface CompareState {
@@ -54,3 +64,5 @@ export interface CompareState {
   positionX: number;
   positionY: number;
 }
+
+export type QuickCompareTarget = 'initial' | 'previous' | 'current';

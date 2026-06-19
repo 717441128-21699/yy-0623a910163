@@ -1,11 +1,12 @@
 import type { Visit } from '@/types';
-import { Calendar, Clock, FileText, ChevronRight } from 'lucide-react';
+import { Calendar, Clock, FileText, ChevronRight, Eye, FileCheck } from 'lucide-react';
 
 interface VisitTimelineProps {
   visits: Visit[];
   currentVisitId: string;
   compareVisitId: string | null;
   onSelectCompare: (visitId: string) => void;
+  onViewSummary?: (visitId: string) => void;
 }
 
 export default function VisitTimeline({
@@ -13,6 +14,7 @@ export default function VisitTimeline({
   currentVisitId,
   compareVisitId,
   onSelectCompare,
+  onViewSummary,
 }: VisitTimelineProps) {
   const sortedVisits = [...visits].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
@@ -34,10 +36,11 @@ export default function VisitTimeline({
         <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-slate-200" />
 
         <div className="space-y-3">
-          {sortedVisits.map((visit, index) => {
+          {sortedVisits.map((visit) => {
             const isCurrent = visit.id === currentVisitId;
             const isCompare = visit.id === compareVisitId;
             const isInitial = visit.visitNumber === 0;
+            const canViewSummary = visit.status === 'completed';
 
             return (
               <div key={visit.id} className="relative pl-10">
@@ -58,7 +61,7 @@ export default function VisitTimeline({
 
                 <div
                   className={`
-                    p-3 rounded-lg cursor-pointer transition-all
+                    p-3 rounded-lg cursor-pointer transition-all group
                     ${isCurrent
                       ? 'bg-teal-50 border border-teal-200'
                       : isCompare
@@ -83,10 +86,29 @@ export default function VisitTimeline({
                           对比
                         </span>
                       )}
+                      {visit.status === 'completed' && (
+                        <span className="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full border border-emerald-200">
+                          已完成
+                        </span>
+                      )}
                     </div>
-                    {!isCurrent && (
-                      <ChevronRight size={16} className="text-slate-400" />
-                    )}
+                    <div className="flex items-center gap-1">
+                      {canViewSummary && onViewSummary && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onViewSummary(visit.id);
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
+                          title="查看摘要"
+                        >
+                          <Eye size={14} />
+                        </button>
+                      )}
+                      {!isCurrent && (
+                        <ChevronRight size={16} className="text-slate-400" />
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-3 text-xs text-slate-500 mb-2">
@@ -96,6 +118,15 @@ export default function VisitTimeline({
                     </span>
                     <span className="text-slate-400">·</span>
                     <span>{Object.keys(visit.photos).length}张照片</span>
+                    {visit.completedAt && (
+                      <>
+                        <span className="text-slate-400">·</span>
+                        <span className="flex items-center gap-1">
+                          <FileCheck size={12} />
+                          已归档
+                        </span>
+                      </>
+                    )}
                   </div>
 
                   {visit.notes && (
