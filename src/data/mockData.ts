@@ -132,6 +132,7 @@ export const mockVisits: Visit[] = [
     notes: '初诊记录：上下牙列拥挤，深覆合II度。方案：拔牙矫治，拔除4颗第一前磨牙。',
     photos: generateVisitPhotos(colors.initial),
     completedAt: '2025-01-20T10:30:00Z',
+    conclusions: [],
   },
   {
     id: 'v1-p2-1',
@@ -142,6 +143,10 @@ export const mockVisits: Visit[] = [
     notes: '托槽粘接完成，患者适应良好。继续观察，下次复诊更换主弓丝。',
     photos: generateVisitPhotos(colors.visit1),
     completedAt: '2025-04-15T09:45:00Z',
+    conclusions: [
+      { angle: 'front_smile', compareVisitId: 'v1-p2-initial', description: '托槽已粘接，牙列开始排齐', verdict: 'improved', createdAt: '2025-04-15T09:40:00Z' },
+      { angle: 'upper_occlusal', compareVisitId: 'v1-p2-initial', description: '上颌弓丝入槽，注意口腔卫生', verdict: 'attention', createdAt: '2025-04-15T09:42:00Z' },
+    ],
   },
   {
     id: 'v1-p2-2',
@@ -152,6 +157,9 @@ export const mockVisits: Visit[] = [
     notes: '牙列排齐进展顺利，上下牙弓形态良好。开始轻力牵引调整中线。',
     photos: generateVisitPhotos(colors.visit2),
     completedAt: '2025-07-20T11:00:00Z',
+    conclusions: [
+      { angle: 'front_smile', compareVisitId: 'v1-p2-1', description: '前牙排齐明显改善', verdict: 'improved', createdAt: '2025-07-20T10:55:00Z' },
+    ],
   },
   {
     id: 'v1-p2-current',
@@ -161,6 +169,7 @@ export const mockVisits: Visit[] = [
     status: 'draft',
     notes: '',
     photos: {},
+    conclusions: [],
   },
   {
     id: 'v1-p1-initial',
@@ -171,6 +180,7 @@ export const mockVisits: Visit[] = [
     notes: '初诊：安氏II类错颌，下颌后缩。隐形矫治方案。',
     photos: generateVisitPhotos(colors.initial),
     completedAt: '2025-03-15T14:20:00Z',
+    conclusions: [],
   },
   {
     id: 'v1-p1-current',
@@ -180,6 +190,7 @@ export const mockVisits: Visit[] = [
     status: 'draft',
     notes: '',
     photos: {},
+    conclusions: [],
   },
 ];
 

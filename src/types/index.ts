@@ -34,6 +34,16 @@ export interface PhotoItem {
 
 export type PhotoAngleMap = Partial<Record<PhotoAngle, PhotoItem>>;
 
+export type CompareVerdict = 'improved' | 'attention' | 'stable';
+
+export interface CompareConclusion {
+  angle: PhotoAngle;
+  compareVisitId: string;
+  description: string;
+  verdict: CompareVerdict | null;
+  createdAt: string;
+}
+
 export interface Patient {
   id: string;
   name: string;
@@ -57,6 +67,7 @@ export interface Visit {
   photos: PhotoAngleMap;
   compareVisitId?: string;
   completedAt?: string;
+  conclusions: CompareConclusion[];
 }
 
 export interface CompareState {

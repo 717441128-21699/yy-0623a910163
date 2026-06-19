@@ -16,8 +16,10 @@ import VisitTimeline from '@/components/VisitTimeline';
 import OrderNote from '@/components/OrderNote';
 import QuickCompareBar from '@/components/QuickCompareBar';
 import VisitSummary from '@/components/VisitSummary';
+import CompareConclusionBar from '@/components/CompareConclusionBar';
+import HistorySummaryList from '@/components/HistorySummaryList';
 import { useVisitStore } from '@/store/useVisitStore';
-import type { PhotoAngle, PhotoQualityStatus, QuickCompareTarget } from '@/types';
+import type { PhotoAngle, PhotoQualityStatus, QuickCompareTarget, CompareConclusion } from '@/types';
 import { ANGLE_LABELS } from '@/types';
 
 export default function VisitDetail() {
@@ -35,6 +37,7 @@ export default function VisitDetail() {
     getPreviousVisit,
     getVisitById,
     getQualityIssues,
+    getConclusionsForAngle,
     currentVisitId,
     compareVisitId,
     selectedAngle,
@@ -49,6 +52,8 @@ export default function VisitDetail() {
     updatePhotoQuality,
     updateNotes,
     completeVisit,
+    saveConclusion,
+    removeConclusion,
     getOrCreateTodayVisit,
   } = useVisitStore();
 
@@ -63,6 +68,10 @@ export default function VisitDetail() {
 
   const hasInitial = !!initialVisit && Object.keys(initialVisit.photos).length > 0;
   const hasPrevious = !!previousVisit && Object.keys(previousVisit.photos).length > 0;
+  const hasCurrentPhoto =
+    !!currentVisit &&
+    !!selectedAngle &&
+    !!currentVisit.photos[selectedAngle as PhotoAngle];
 
   useEffect(() => {
     if (patientId) {
@@ -88,16 +97,21 @@ export default function VisitDetail() {
       } else if (target === 'previous' && previousVisit) {
         setCompareVisit(previousVisit.id);
       } else if (target === 'current') {
-        const otherCompleted = patientVisits.find(
-          (v) => v.status === 'completed' && v.id !== currentVisitId
-        );
-        if (otherCompleted) {
-          setCompareVisit(otherCompleted.id);
-        }
+        setCompareVisit(currentVisitId);
       }
     },
-    [patientId, currentVisitId, initialVisit, previousVisit, patientVisits, setCompareVisit]
+    [patientId, currentVisitId, initialVisit, previousVisit, setCompareVisit]
   );
+
+  useEffect(() => {
+    if (compareVisitId === currentVisitId) {
+      setQuickCompareTarget('current');
+    } else if (initialVisit && compareVisitId === initialVisit.id) {
+      setQuickCompareTarget('initial');
+    } else if (previousVisit && compareVisitId === previousVisit.id) {
+      setQuickCompareTarget('previous');
+    }
+  }, [compareVisitId, currentVisitId, initialVisit, previousVisit]);
 
   const handleUpload = useCallback(
     (angle: PhotoAngle, file: File) => {
@@ -140,7 +154,7 @@ export default function VisitDetail() {
   const qualityIssues = useMemo(() => {
     if (!currentVisitId) return { missing: [] as PhotoAngle[], retake: [] as PhotoAngle[] };
     return getQualityIssues(currentVisitId);
-  }, [currentVisitId, getQualityIssues]);
+  }, [currentVisitId, getQualityIssues, currentVisit?.photos]);
 
   const handleSaveVisit = useCallback(() => {
     if (!currentVisitId) return;
@@ -174,10 +188,37 @@ export default function VisitDetail() {
     [setShowSummary]
   );
 
+  const handleSaveConclusion = useCallback(
+    (conclusion: CompareConclusion) => {
+      if (!currentVisitId) return;
+      saveConclusion(currentVisitId, conclusion);
+    },
+    [currentVisitId, saveConclusion]
+  );
+
+  const handleRemoveConclusion = useCallback(
+    (angle: PhotoAngle, compareVisitId: string) => {
+      if (!currentVisitId) return;
+      removeConclusion(currentVisitId, angle, compareVisitId);
+    },
+    [currentVisitId, removeConclusion]
+  );
+
+  const existingConclusion = useMemo(() => {
+    if (!currentVisitId || !selectedAngle || !compareVisitId) return undefined;
+    const conclusions = getConclusionsForAngle(currentVisitId, selectedAngle);
+    return conclusions.find((c) => c.compareVisitId === compareVisitId);
+  }, [currentVisitId, selectedAngle, compareVisitId, getConclusionsForAngle]);
+
+  const isCurrentMode = compareVisitId === currentVisitId;
+
   const currentAnglePhotoItem = currentVisit?.photos?.[selectedAngle as PhotoAngle];
   const compareAnglePhotoItem = compareVisit?.photos?.[selectedAngle as PhotoAngle];
   const currentAnglePhoto = currentAnglePhotoItem?.url;
   const compareAnglePhoto = compareAnglePhotoItem?.url;
+
+  const leftImage = isCurrentMode ? currentAnglePhoto : compareAnglePhoto;
+  const rightImage = currentAnglePhoto;
 
   const currentLabel = currentVisit
     ? currentVisit.visitNumber === 0
@@ -190,6 +231,9 @@ export default function VisitDetail() {
       ? '初诊'
       : `第${compareVisit.visitNumber}次复诊`
     : '';
+
+  const leftLabel = isCurrentMode ? currentLabel : compareLabel;
+  const rightLabel = currentLabel;
 
   const isCompleted = currentVisit?.status === 'completed';
 
@@ -306,15 +350,20 @@ export default function VisitDetail() {
               onSelectCompare={setCompareVisit}
               onViewSummary={handleViewSummary}
             />
+
+            <HistorySummaryList
+              visits={patientVisits}
+              getVisitById={getVisitById}
+              onViewSummary={handleViewSummary}
+            />
           </div>
 
           <div className="col-span-8 space-y-6">
             <QuickCompareBar
-              patientId={patientId || ''}
-              currentVisitId={currentVisitId || ''}
               currentTarget={quickCompareTarget}
               hasInitial={hasInitial}
               hasPrevious={hasPrevious}
+              hasCurrentPhoto={hasCurrentPhoto}
               onChangeTarget={handleQuickCompareChange}
             />
 
@@ -327,17 +376,23 @@ export default function VisitDetail() {
                   </span>
                 </h3>
                 <div className="flex items-center gap-2 text-sm text-slate-500">
-                  <CheckCircle2 size={14} className="text-teal-500" />
-                  <span>左右拖动分割线对比</span>
+                  {isCurrentMode ? (
+                    <span className="text-amber-600 font-medium">查看模式：本次照片</span>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={14} className="text-teal-500" />
+                      <span>左右拖动分割线对比</span>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {currentAnglePhoto && compareAnglePhoto ? (
+              {leftImage && rightImage ? (
                 <CompareView
-                  leftImage={compareAnglePhoto}
-                  rightImage={currentAnglePhoto}
-                  leftLabel={compareLabel}
-                  rightLabel={currentLabel}
+                  leftImage={leftImage}
+                  rightImage={rightImage}
+                  leftLabel={leftLabel}
+                  rightLabel={rightLabel}
                 />
               ) : (
                 <div className="aspect-[4/3] bg-slate-100 rounded-lg flex items-center justify-center">
@@ -371,6 +426,17 @@ export default function VisitDetail() {
                 </div>
               )}
             </div>
+
+            {!isCurrentMode && (
+              <CompareConclusionBar
+                angle={selectedAngle}
+                compareVisitId={compareVisitId}
+                existingConclusion={existingConclusion}
+                onSave={handleSaveConclusion}
+                onRemove={handleRemoveConclusion}
+                readOnly={isCompleted}
+              />
+            )}
 
             <OrderNote
               notes={currentVisit?.notes || ''}
@@ -453,6 +519,7 @@ export default function VisitDetail() {
           visit={summaryVisit}
           patient={patient}
           compareVisit={summaryVisit.compareVisitId ? getVisitById(summaryVisit.compareVisitId) : compareVisit}
+          getVisitById={getVisitById}
           onClose={handleCloseSummary}
           onBackToEdit={!isCompleted ? () => setShowSummary(false) : undefined}
         />

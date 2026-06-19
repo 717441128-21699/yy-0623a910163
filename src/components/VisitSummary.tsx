@@ -10,17 +10,26 @@ import {
   User,
   FileCheck,
   Hash,
+  TrendingUp,
+  Minus,
 } from 'lucide-react';
-import type { Visit, Patient, PhotoAngle } from '@/types';
+import type { Visit, Patient, PhotoAngle, CompareConclusion, CompareVerdict } from '@/types';
 import { ANGLE_LABELS, ANGLE_ORDER } from '@/types';
 
 interface VisitSummaryProps {
   visit: Visit;
   patient: Patient;
   compareVisit?: Visit;
+  getVisitById: (id: string) => Visit | undefined;
   onClose: () => void;
   onBackToEdit?: () => void;
 }
+
+const verdictDisplay: Record<CompareVerdict, { label: string; color: string; icon: typeof TrendingUp }> = {
+  improved: { label: '好转', color: 'text-emerald-600 bg-emerald-50', icon: TrendingUp },
+  attention: { label: '需关注', color: 'text-amber-600 bg-amber-50', icon: AlertTriangle },
+  stable: { label: '稳定', color: 'text-slate-600 bg-slate-100', icon: Minus },
+};
 
 const formatDateTime = (isoString: string) => {
   const date = new Date(isoString);
@@ -33,6 +42,7 @@ export default function VisitSummary({
   visit,
   patient,
   compareVisit,
+  getVisitById,
   onClose,
   onBackToEdit,
 }: VisitSummaryProps) {
@@ -56,6 +66,14 @@ export default function VisitSummary({
       : `第${compareVisit.visitNumber}次复诊`
     : '未选择';
 
+  const hasConclusions = visit.conclusions.length > 0;
+
+  const getCompareLabel = (compareVisitId: string) => {
+    const cv = getVisitById(compareVisitId);
+    if (!cv) return '未知';
+    return cv.visitNumber === 0 ? '初诊' : `第${cv.visitNumber}次复诊`;
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -66,7 +84,9 @@ export default function VisitSummary({
             </div>
             <div>
               <h2 className="text-lg font-bold text-white">{visitLabel}摘要</h2>
-              <p className="text-sm text-teal-100">复诊记录已保存</p>
+              <p className="text-sm text-teal-100">
+                {visit.status === 'completed' ? '复诊记录已归档' : '复诊记录'}
+              </p>
             </div>
           </div>
           <button
@@ -203,6 +223,46 @@ export default function VisitSummary({
               </div>
             </div>
           </div>
+
+          {hasConclusions && (
+            <div className="bg-slate-50 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-slate-500 text-xs mb-3">
+                <TrendingUp size={14} />
+                对比结论
+              </div>
+              <div className="space-y-2">
+                {visit.conclusions.map((conclusion, idx) => {
+                  const vd = conclusion.verdict ? verdictDisplay[conclusion.verdict] : null;
+                  const VerdictIcon = vd?.icon;
+
+                  return (
+                    <div key={idx} className="flex items-start gap-2 p-2.5 bg-white rounded-lg">
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <span className="text-xs font-medium text-slate-700">
+                          {ANGLE_LABELS[conclusion.angle]}
+                        </span>
+                        <span className="text-xs text-slate-400">vs</span>
+                        <span className="text-xs text-slate-500">
+                          {getCompareLabel(conclusion.compareVisitId)}
+                        </span>
+                      </div>
+                      {vd && VerdictIcon && (
+                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0 ${vd.color}`}>
+                          <VerdictIcon size={10} />
+                          {vd.label}
+                        </span>
+                      )}
+                      {conclusion.description && (
+                        <span className="text-xs text-slate-600 leading-relaxed">
+                          {conclusion.description}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="bg-slate-50 rounded-xl p-4">
             <div className="flex items-center gap-2 text-slate-500 text-xs mb-2">

@@ -2,24 +2,24 @@ import type { QuickCompareTarget } from '@/types';
 import { CalendarDays, ArrowLeftRight, Clock } from 'lucide-react';
 
 interface QuickCompareBarProps {
-  patientId: string;
-  currentVisitId: string;
   currentTarget: QuickCompareTarget;
   hasInitial: boolean;
   hasPrevious: boolean;
+  hasCurrentPhoto: boolean;
   onChangeTarget: (target: QuickCompareTarget) => void;
 }
 
 const targetConfig: Record<QuickCompareTarget, { label: string; icon: typeof CalendarDays; description: string }> = {
-  initial: { label: '初诊', icon: CalendarDays, description: '治疗开始时' },
-  previous: { label: '上次复诊', icon: Clock, description: '最近一次记录' },
-  current: { label: '本次', icon: ArrowLeftRight, description: '左右互相比对' },
+  initial: { label: '初诊', icon: CalendarDays, description: '与初诊对比' },
+  previous: { label: '上次复诊', icon: Clock, description: '与上次复诊对比' },
+  current: { label: '本次', icon: ArrowLeftRight, description: '查看本次照片' },
 };
 
 export default function QuickCompareBar({
   currentTarget,
   hasInitial,
   hasPrevious,
+  hasCurrentPhoto,
   onChangeTarget,
 }: QuickCompareBarProps) {
   const targets: QuickCompareTarget[] = ['initial', 'previous', 'current'];
@@ -28,17 +28,17 @@ export default function QuickCompareBar({
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
       <div className="flex items-center justify-between mb-3">
         <h4 className="text-sm font-semibold text-slate-700">快捷对比</h4>
-        <span className="text-xs text-slate-400">快速切换左侧对比对象</span>
+        <span className="text-xs text-slate-400">切换对比对象</span>
       </div>
       <div className="grid grid-cols-3 gap-2">
         {targets.map((target) => {
           const config = targetConfig[target];
           const Icon = config.icon;
           const isActive = currentTarget === target;
-          const isDisabled = target !== 'current' && (
+          const isDisabled =
             (target === 'initial' && !hasInitial) ||
-            (target === 'previous' && !hasPrevious)
-          );
+            (target === 'previous' && !hasPrevious) ||
+            (target === 'current' && !hasCurrentPhoto);
 
           return (
             <button

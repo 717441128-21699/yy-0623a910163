@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Patient, Visit, PhotoAngle, PhotoAngleMap, PhotoQualityStatus, PhotoItem } from '@/types';
+import type { Patient, Visit, PhotoAngle, PhotoAngleMap, PhotoQualityStatus, PhotoItem, CompareConclusion, CompareVerdict } from '@/types';
 import { mockPatients, mockVisits } from '@/data/mockData';
 
 const STORAGE_KEY = 'ortho-visit-workstation-data';
@@ -13,7 +13,14 @@ const loadFromStorage = (): PersistedData | null => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const data = JSON.parse(raw);
+      if (data && data.visits && data.patients) {
+        data.visits = data.visits.map((v: Visit) => ({
+          ...v,
+          conclusions: v.conclusions || [],
+        }));
+        return data;
+      }
     }
   } catch {
     console.warn('Failed to load from localStorage');
@@ -31,7 +38,7 @@ const saveToStorage = (data: PersistedData) => {
 
 const getInitialData = (): PersistedData => {
   const stored = loadFromStorage();
-  if (stored && stored.visits && stored.patients) {
+  if (stored) {
     return stored;
   }
   return {
@@ -75,6 +82,10 @@ interface VisitState {
   updateNotes: (visitId: string, notes: string) => void;
   setCompareVisitForRecord: (visitId: string, compareVisitId: string) => void;
   completeVisit: (visitId: string) => void;
+
+  saveConclusion: (visitId: string, conclusion: CompareConclusion) => void;
+  removeConclusion: (visitId: string, angle: PhotoAngle, compareVisitId: string) => void;
+  getConclusionsForAngle: (visitId: string, angle: PhotoAngle) => CompareConclusion[];
 
   getOrCreateTodayVisit: (patientId: string) => Visit;
 
@@ -231,8 +242,45 @@ export const useVisitStore = create<VisitState>((set, get) => ({
     get().persist();
   },
 
+  saveConclusion: (visitId, conclusion) => {
+    set((state) => ({
+      visits: state.visits.map((v) => {
+        if (v.id !== visitId) return v;
+        const filtered = v.conclusions.filter(
+          (c) => !(c.angle === conclusion.angle && c.compareVisitId === conclusion.compareVisitId)
+        );
+        return {
+          ...v,
+          conclusions: [...filtered, conclusion],
+        };
+      }),
+    }));
+    get().persist();
+  },
+
+  removeConclusion: (visitId, angle, compareVisitId) => {
+    set((state) => ({
+      visits: state.visits.map((v) => {
+        if (v.id !== visitId) return v;
+        return {
+          ...v,
+          conclusions: v.conclusions.filter(
+            (c) => !(c.angle === angle && c.compareVisitId === compareVisitId)
+          ),
+        };
+      }),
+    }));
+    get().persist();
+  },
+
+  getConclusionsForAngle: (visitId, angle) => {
+    const visit = get().getVisitById(visitId);
+    if (!visit) return [];
+    return visit.conclusions.filter((c) => c.angle === angle);
+  },
+
   getOrCreateTodayVisit: (patientId) => {
-    const { visits, getVisitsByPatientId } = get();
+    const { getVisitsByPatientId } = get();
     const today = new Date().toISOString().split('T')[0];
 
     const patientVisits = getVisitsByPatientId(patientId);
@@ -252,6 +300,7 @@ export const useVisitStore = create<VisitState>((set, get) => ({
       status: 'draft',
       notes: '',
       photos: {},
+      conclusions: [],
     };
 
     set((state) => ({
